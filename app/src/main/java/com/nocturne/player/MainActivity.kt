@@ -95,6 +95,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -143,6 +144,7 @@ private fun NocturneApp() {
     var status by remember { mutableStateOf("YOUR MUSIC. YOUR SPACE.") }
     var controller by remember { mutableStateOf<MediaController?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
+    var playbackError by remember { mutableStateOf<String?>(null) }
     var currentId by remember { mutableStateOf<String?>(null) }
     var durationMs by remember { mutableIntStateOf(0) }
     var positionMs by remember { mutableIntStateOf(0) }
@@ -216,7 +218,12 @@ private fun NocturneApp() {
         if (c == null) return@DisposableEffect onDispose { }
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            override fun onPlayerError(error: PlaybackException) {
+                isPlaying = false
+                playbackError = "این فایل پخش نشد؛ فرمت یا دسترسی فایل را بررسی کن."
+            }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                playbackError = null
                 currentId = mediaItem?.mediaId
                 positionMs = 0
                 seekDraft = 0f
@@ -287,7 +294,15 @@ private fun NocturneApp() {
         c.play()
         currentId = track.id.toString()
         isPlaying = true
+        playbackError = null
         status = "در حال پخش از کتابخانهٔ محلی"
+    }
+
+    fun previousTrack() {
+        controller?.let { player ->
+            if (player.currentPosition > 3_000L) player.seekTo(0L)
+            else player.seekToPreviousMediaItem()
+        }
     }
 
     fun toggleFavorite(track: LocalTrack) {
@@ -356,12 +371,13 @@ private fun NocturneApp() {
                         isPlaying = isPlaying,
                         positionMs = positionMs,
                         durationMs = durationMs,
+                        playbackError = playbackError,
                         onPlayPause = {
                             val c = controller
                             if (c == null) return@NowPlayingCard
                             if (c.isPlaying) c.pause() else if (c.currentMediaItem == null) tracks.firstOrNull()?.let(::playTrack) else c.play()
                         },
-                        onPrevious = { controller?.seekToPreviousMediaItem() },
+                        onPrevious = ::previousTrack,
                         onNext = { controller?.seekToNextMediaItem() },
                         onSeek = { fraction -> controller?.let { c -> if (durationMs > 0) c.seekTo((fraction * durationMs).toLong()) } },
                         shuffleOn = shuffleOn,
@@ -470,6 +486,7 @@ private fun NowPlayingCard(
     isPlaying: Boolean,
     positionMs: Int,
     durationMs: Int,
+    playbackError: String?,
     onPlayPause: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -520,6 +537,15 @@ private fun NowPlayingCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 5.dp)
             )
+            playbackError?.let {
+                Text(
+                    it,
+                    color = Color(0xFFFFA7A7),
+                    fontSize = 11.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
             if (track != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.padding(top = 11.dp)) {
                     MetadataPill(track.extra.genre ?: "GENRE · —")
