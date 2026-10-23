@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.nocturne.player"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.nocturne.player"
