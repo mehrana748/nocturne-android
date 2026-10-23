@@ -17,17 +17,22 @@ object LocalLibraryScanner {
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         }
         val genresByTrackId = queryGenres(context, volumeName)
-        val projection = arrayOf(
-            MediaStore.Audio.Media._ID,
-            MediaStore.Audio.Media.TITLE,
-            MediaStore.Audio.Media.ARTIST,
-            MediaStore.Audio.Media.ALBUM,
-            MediaStore.Audio.Media.ALBUM_ID,
-            MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.YEAR,
-            MediaStore.Audio.Media.MIME_TYPE,
-            MediaStore.Audio.Media.IS_MUSIC
-        )
+        val projection = buildList {
+            addAll(
+                listOf(
+                    MediaStore.Audio.Media._ID,
+                    MediaStore.Audio.Media.TITLE,
+                    MediaStore.Audio.Media.ARTIST,
+                    MediaStore.Audio.Media.ALBUM,
+                    MediaStore.Audio.Media.ALBUM_ID,
+                    MediaStore.Audio.Media.DURATION,
+                    MediaStore.Audio.Media.YEAR,
+                    MediaStore.Audio.Media.MIME_TYPE,
+                    MediaStore.Audio.Media.IS_MUSIC
+                )
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.MediaColumns.COMPOSER)
+        }.toTypedArray()
         val result = mutableListOf<LocalTrack>()
         val favoriteIds = FavoritesStore.all(context)
         val cachedMetadata = MetadataStore.all(context)
@@ -47,6 +52,7 @@ object LocalLibraryScanner {
             val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val yearCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
             val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
+            val composerCol = cursor.getColumnIndex(MediaStore.MediaColumns.COMPOSER)
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idCol)
@@ -66,14 +72,29 @@ object LocalLibraryScanner {
                     albumArtUri = artUri,
                     year = year,
                     mimeType = if (cursor.isNull(mimeCol)) null else cursor.getString(mimeCol),
-                    extra = cachedMetadata[id]?.let { cached ->
-                        if (cached.genre.isNullOrBlank() && genresByTrackId[id] != null) {
-                            cached.copy(genre = genresByTrackId[id], source = cached.source ?: "MediaStore")
+                    extra = run {
+                        val localComposers = if (composerCol >= 0) {
+                            cursor.getString(composerCol)?.split(Regex("[;,]"))?.map(String::trim)
+                                ?.filter(String::isNotBlank).orEmpty()
+                        } else emptyList()
+                        val localGenre = genresByTrackId[id]
+                        val cached = cachedMetadata[id]
+                        if (cached == null) {
+                            TrackExtraMetadata(
+                                genre = localGenre,
+                                composers = localComposers,
+                                source = if (localGenre != null || localComposers.isNotEmpty()) "MediaStore" else null
+                            )
+                        } else if ((cached.genre.isNullOrBlank() && localGenre != null) ||
+                            (cached.composers.isEmpty() && localComposers.isNotEmpty())
+                        ) {
+                            cached.copy(
+                                genre = cached.genre?.takeIf(String::isNotBlank) ?: localGenre,
+                                composers = cached.composers.ifEmpty { localComposers },
+                                source = cached.source ?: "MediaStore"
+                            )
                         } else cached
-                    } ?: TrackExtraMetadata(
-                        genre = genresByTrackId[id],
-                        source = genresByTrackId[id]?.let { "MediaStore" }
-                    ),
+                    },
                     isFavorite = id in favoriteIds
                 )
             }
