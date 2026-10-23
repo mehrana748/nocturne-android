@@ -403,7 +403,7 @@ private fun NocturneApp() {
                             if (c.isPlaying) {
                                 c.pause()
                             } else if (c.currentMediaItem == null) {
-                                visibleTracks.firstOrNull()?.let(::playTrack)
+                                visibleTracks.firstOrNull()?.let { playTrack(it) }
                                     ?: run { status = "No songs match the current library filter." }
                             } else c.play()
                         },
@@ -769,7 +769,7 @@ private fun LibraryHeader(
                 FilterChip(
                     selected = view == option,
                     onClick = { onView(option) },
-                    label = { Text(option.lowercase().replaceFirstChar(Char::uppercase)) }
+                    label = { Text(option.lowercase(Locale.getDefault()).replaceFirstChar { it.titlecase(Locale.getDefault()) }) }
                 )
             }
         }
