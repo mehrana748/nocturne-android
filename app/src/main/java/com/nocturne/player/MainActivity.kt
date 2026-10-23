@@ -123,6 +123,15 @@ private val Ivory = Color(0xFFF4F2ED)
 private val Muted = Color(0xFF929BAD)
 private val ThinLine = Color(0x1AFFFFFF)
 
+private data class LibraryCollection(
+    val key: Long,
+    val title: String,
+    val subtitle: String,
+    val trackCount: Int,
+    val artworkUri: Uri?,
+    val tracks: List<LocalTrack>
+)
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -151,6 +160,7 @@ private fun NocturneApp() {
     var seekDraft by remember { mutableFloatStateOf(0f) }
     var section by remember { mutableStateOf("MUSIC") }
     var libraryFilter by remember { mutableStateOf("ALL") }
+    var libraryView by remember { mutableStateOf("SONGS") }
     var query by remember { mutableStateOf("") }
     var shuffleOn by remember { mutableStateOf(false) }
     var repeatOn by remember { mutableStateOf(false) }
@@ -268,14 +278,28 @@ private fun NocturneApp() {
         matchesFilter && (q.isBlank() || listOf(track.title, track.artist, track.album, track.extra.genre.orEmpty(), track.extra.composers.joinToString(" "))
             .any { it.lowercase(Locale.getDefault()).contains(q) })
     }
+    val visibleCollections = when (libraryView) {
+        "ALBUMS" -> visibleTracks.groupBy { it.album.lowercase(Locale.ROOT) to it.artist.lowercase(Locale.ROOT) }
+            .values.map { collectionTracks ->
+                val first = collectionTracks.first()
+                LibraryCollection(first.id, first.album, first.artist, collectionTracks.size, first.albumArtUri, collectionTracks)
+            }.sortedBy { it.title.lowercase(Locale.ROOT) }
+        "ARTISTS" -> visibleTracks.groupBy { it.artist.lowercase(Locale.ROOT) }
+            .values.map { collectionTracks ->
+                val first = collectionTracks.first()
+                val albumCount = collectionTracks.map { it.album }.distinct().size
+                LibraryCollection(first.id, first.artist, albumCount.toString() + " albums", collectionTracks.size, first.albumArtUri, collectionTracks)
+            }.sortedBy { it.title.lowercase(Locale.ROOT) }
+        else -> emptyList()
+    }
 
-    fun playTrack(track: LocalTrack) {
+    fun playTrack(track: LocalTrack, selectedQueue: List<LocalTrack>? = null) {
         val c = controller
         if (c == null) {
             status = "پلیر در حال آماده‌شدن است؛ یک لحظه دیگر تلاش کن."
             return
         }
-        val queueTracks = visibleTracks.ifEmpty { listOf(track) }
+        val queueTracks = selectedQueue ?: visibleTracks.ifEmpty { listOf(track) }
         val mediaItems = queueTracks.map { item ->
             val metadata = MediaMetadata.Builder()
                 .setTitle(item.title)
@@ -404,12 +428,35 @@ private fun NocturneApp() {
                                 onQuery = { query = it },
                                 filter = libraryFilter,
                                 onFilter = { libraryFilter = it },
-                                genres = availableGenres
+                                genres = availableGenres,
+                                view = libraryView,
+                                onView = { libraryView = it }
                             )
                         }
                         if (scanning && tracks.isEmpty()) {
                             item { LoadingCard() }
-                        } else if (visibleTracks.isEmpty()) {
+                        } else if (libraryView == "SONGS") {
+                            if (visibleTracks.isEmpty()) {
+                                item {
+                                    EmptyLibraryCard(
+                                        hasTracks = tracks.isNotEmpty(),
+                                        onScan = {
+                                            if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) scanLibrary()
+                                            else permissionLauncher.launch(permission)
+                                        }
+                                    )
+                                }
+                            } else {
+                                items(visibleTracks, key = { it.id }) { track ->
+                                    TrackRow(
+                                        track = track,
+                                        isCurrent = track.id.toString() == currentId,
+                                        onClick = { playTrack(track, visibleTracks) },
+                                        onFavorite = { toggleFavorite(track) }
+                                    )
+                                }
+                            }
+                        } else if (visibleCollections.isEmpty()) {
                             item {
                                 EmptyLibraryCard(
                                     hasTracks = tracks.isNotEmpty(),
@@ -420,12 +467,11 @@ private fun NocturneApp() {
                                 )
                             }
                         } else {
-                            items(visibleTracks, key = { it.id }) { track ->
-                                TrackRow(
-                                    track = track,
-                                    isCurrent = track.id.toString() == currentId,
-                                    onClick = { playTrack(track) },
-                                    onFavorite = { toggleFavorite(track) }
+                            items(visibleCollections, key = { it.key }) { collection ->
+                                CollectionRow(
+                                    collection = collection,
+                                    isCurrent = collection.tracks.any { it.id.toString() == currentId },
+                                    onClick = { collection.tracks.firstOrNull()?.let { playTrack(it, collection.tracks) } }
                                 )
                             }
                         }
@@ -685,7 +731,9 @@ private fun LibraryHeader(
     onQuery: (String) -> Unit,
     filter: String,
     onFilter: (String) -> Unit,
-    genres: List<String>
+    genres: List<String>,
+    view: String,
+    onView: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -717,6 +765,15 @@ private fun LibraryHeader(
             shape = RoundedCornerShape(15.dp)
         )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(listOf("SONGS", "ALBUMS", "ARTISTS"), key = { it }) { option ->
+                FilterChip(
+                    selected = view == option,
+                    onClick = { onView(option) },
+                    label = { Text(option.lowercase().replaceFirstChar(Char::uppercase)) }
+                )
+            }
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 FilterChip(selected = filter == "ALL", onClick = { onFilter("ALL") }, label = { Text("All tracks") })
             }
@@ -731,6 +788,31 @@ private fun LibraryHeader(
                     label = { Text(genre, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CollectionRow(collection: LibraryCollection, isCurrent: Boolean, onClick: () -> Unit) {
+    Surface(
+        color = if (isCurrent) Mint.copy(alpha = 0.075f) else Color.White.copy(alpha = 0.025f),
+        shape = RoundedCornerShape(17.dp),
+        modifier = Modifier.fillMaxWidth()
+            .border(1.dp, if (isCurrent) Mint.copy(alpha = 0.19f) else ThinLine, RoundedCornerShape(17.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            Modifier.padding(horizontal = 11.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(11.dp)
+        ) {
+            AlbumArtwork(collection.artworkUri, Modifier.size(52.dp))
+            Column(Modifier.weight(1f)) {
+                Text(collection.title, color = if (isCurrent) Mint else Ivory, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(collection.subtitle, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+            }
+            Text(collection.trackCount.toString() + " tracks", color = Muted, fontSize = 9.sp)
+            Icon(Icons.Default.PlayArrow, contentDescription = "Play " + collection.title, tint = Mint)
         }
     }
 }
