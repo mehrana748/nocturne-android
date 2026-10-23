@@ -10,11 +10,13 @@ import android.provider.MediaStore
 object LocalLibraryScanner {
     fun scan(context: Context): List<LocalTrack> {
         val resolver = context.contentResolver
+        val volumeName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) MediaStore.VOLUME_EXTERNAL else "external"
         val collection: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            MediaStore.Audio.Media.getContentUri(volumeName)
         } else {
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         }
+        val genresByTrackId = queryGenres(context, volumeName)
         val projection = arrayOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
@@ -64,11 +66,50 @@ object LocalLibraryScanner {
                     albumArtUri = artUri,
                     year = year,
                     mimeType = if (cursor.isNull(mimeCol)) null else cursor.getString(mimeCol),
-                    extra = cachedMetadata[id] ?: TrackExtraMetadata(),
+                    extra = cachedMetadata[id]?.let { cached ->
+                        if (cached.genre.isNullOrBlank() && genresByTrackId[id] != null) {
+                            cached.copy(genre = genresByTrackId[id], source = cached.source ?: "MediaStore")
+                        } else cached
+                    } ?: TrackExtraMetadata(
+                        genre = genresByTrackId[id],
+                        source = genresByTrackId[id]?.let { "MediaStore" }
+                    ),
                     isFavorite = id in favoriteIds
                 )
             }
         }
         return result
+    }
+
+    /** Reads genre membership from the device's MediaStore index without opening or uploading audio files. */
+    private fun queryGenres(context: Context, volumeName: String): Map<Long, String> {
+        val genresByTrack = mutableMapOf<Long, LinkedHashSet<String>>()
+        runCatching {
+            val resolver = context.contentResolver
+            resolver.query(
+                MediaStore.Audio.Genres.getContentUri(volumeName),
+                arrayOf(MediaStore.Audio.Genres._ID, MediaStore.Audio.Genres.NAME),
+                null, null, MediaStore.Audio.Genres.NAME
+            )?.use { genres ->
+                val idColumn = genres.getColumnIndexOrThrow(MediaStore.Audio.Genres._ID)
+                val nameColumn = genres.getColumnIndexOrThrow(MediaStore.Audio.Genres.NAME)
+                while (genres.moveToNext()) {
+                    val genreId = genres.getLong(idColumn)
+                    val name = genres.getString(nameColumn)?.trim()?.takeIf(String::isNotBlank) ?: continue
+                    resolver.query(
+                        MediaStore.Audio.Genres.Members.getContentUri(volumeName, genreId),
+                        arrayOf(MediaStore.Audio.Genres.Members.AUDIO_ID),
+                        null, null, null
+                    )?.use { members ->
+                        val audioIdColumn = members.getColumnIndexOrThrow(MediaStore.Audio.Genres.Members.AUDIO_ID)
+                        while (members.moveToNext()) {
+                            val audioId = members.getLong(audioIdColumn)
+                            genresByTrack.getOrPut(audioId) { linkedSetOf() }.add(name)
+                        }
+                    }
+                }
+            }
+        }
+        return genresByTrack.mapValues { (_, names) -> names.joinToString(", ") }
     }
 }
