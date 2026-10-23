@@ -47,6 +47,21 @@ object SmartPlaylistStore {
         save(context, all(context).filterNot { it.id == id })
     }
 
+    fun update(context: Context, playlist: SmartPlaylist) {
+        save(context, all(context).map { if (it.id == playlist.id) playlist else it })
+    }
+
+    fun move(context: Context, id: String, offset: Int) {
+        val playlists = all(context).toMutableList()
+        val from = playlists.indexOfFirst { it.id == id }
+        if (from < 0 || playlists.isEmpty()) return
+        val to = (from + offset).coerceIn(0, playlists.lastIndex)
+        if (from == to) return
+        val playlist = playlists.removeAt(from)
+        playlists.add(to, playlist)
+        save(context, playlists)
+    }
+
     private fun save(context: Context, playlists: List<SmartPlaylist>) {
         val array = JSONArray()
         playlists.forEach { playlist ->
