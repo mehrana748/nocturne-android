@@ -693,6 +693,9 @@ private fun LoadingCard() {
 @Composable
 private fun MusicDnaPanel(trackCount: Int, tracks: List<LocalTrack>) {
     val identifiedCount = tracks.count { it.extra.genre != null || it.extra.bpm != null || it.extra.musicalKey != null }
+    val genreCounts = tracks.flatMap { track ->
+        track.extra.genre.orEmpty().split(",").map { it.trim() }.filter(String::isNotBlank)
+    }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(5)
     Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
         Text("Music DNA", color = Ivory, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Text("Turn a folder of files into a searchable map of your musical taste.", color = Muted, fontSize = 12.sp)
@@ -700,11 +703,15 @@ private fun MusicDnaPanel(trackCount: Int, tracks: List<LocalTrack>) {
             Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Default.GraphicEq, contentDescription = null, tint = Mint, modifier = Modifier.size(28.dp))
                 Text("Metadata enrichment is the next engine to connect", color = Ivory, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                Text("The app already scans local media and has a local metadata cache structure. Online track identification and audio analysis are not connected in this build yet.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                Text("Genre tags from the device media index are available offline. Online track identification and audio analysis are not connected yet.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                 Spacer(Modifier.height(2.dp))
                 DnaStat("LOCAL TRACKS SCANNED", trackCount.toString())
-                DnaStat("TRACKS WITH ENRICHED DATA", identifiedCount.toString())
-                DnaStat("OFFLINE ANALYSIS", "MODEL NOT CONNECTED")
+                DnaStat("TRACKS WITH LOCAL DNA DATA", identifiedCount.toString())
+                DnaStat("LOCAL GENRES FOUND", genreCounts.size.toString())
+                genreCounts.forEach { (genre, count) ->
+                    DnaStat(genre.uppercase(Locale.getDefault()), "$count TRACKS")
+                }
+                DnaStat("OFFLINE AUDIO ANALYSIS", "MODEL NOT CONNECTED")
             }
         }
         Text("Planned filters", color = Ivory, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
