@@ -20,8 +20,9 @@
 - [ ] Fingerprint queue, retry strategy, rate limiting, confidence/source tracking
 - [x] User-triggered on-device BPM estimate from up to 30 seconds of a local track; cached per track
 - [x] Approximate slow/steady/fast tempo filters for tracks with stored BPM
+- [x] Save and delete dynamic local playlists based on favourite, genre, or tempo rules
 - [ ] Validate tempo accuracy against reference tracks; implement key/rhythm analysis and filtering
-- [ ] Filter builder and rule-based smart playlists
+- [ ] Advanced multi-rule builder and playlist sorting/management
 
 ## Milestone 0.3 — Stem Lab
 - [ ] Benchmark eligible models (quality, runtime, memory, thermals, licensing)
