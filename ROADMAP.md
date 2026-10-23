@@ -17,7 +17,8 @@
 - [x] Composer tags from Android MediaStore included in Music DNA and library search
 - [ ] Broader embedded tag extraction and metadata reconciliation
 - [ ] Fingerprint queue, retry strategy, rate limiting, confidence/source tracking
-- [ ] Local BPM/key/rhythm analysis and cached results
+- [x] User-triggered on-device BPM estimate from up to 30 seconds of a local track; cached per track
+- [ ] Validate tempo accuracy against reference tracks; implement key/rhythm analysis and filtering
 - [ ] Filter builder and rule-based smart playlists
 
 ## Milestone 0.3 — Stem Lab
