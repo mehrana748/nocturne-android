@@ -254,7 +254,8 @@ private fun NocturneApp() {
             else -> true
         }
         val q = query.trim().lowercase(Locale.getDefault())
-        matchesFilter && (q.isBlank() || listOf(track.title, track.artist, track.album).any { it.lowercase(Locale.getDefault()).contains(q) })
+        matchesFilter && (q.isBlank() || listOf(track.title, track.artist, track.album, track.extra.genre.orEmpty(), track.extra.composers.joinToString(" "))
+            .any { it.lowercase(Locale.getDefault()).contains(q) })
     }
 
     fun playTrack(track: LocalTrack) {
@@ -715,7 +716,7 @@ private fun LoadingCard() {
 
 @Composable
 private fun MusicDnaPanel(trackCount: Int, tracks: List<LocalTrack>) {
-    val identifiedCount = tracks.count { it.extra.genre != null || it.extra.bpm != null || it.extra.musicalKey != null }
+    val identifiedCount = tracks.count { it.extra.genre != null || it.extra.bpm != null || it.extra.musicalKey != null || it.extra.composers.isNotEmpty() }
     val genreCounts = tracks.flatMap { track ->
         track.extra.genre.orEmpty().split(",").map { it.trim() }.filter(String::isNotBlank)
     }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(5)
@@ -731,6 +732,7 @@ private fun MusicDnaPanel(trackCount: Int, tracks: List<LocalTrack>) {
                 DnaStat("LOCAL TRACKS SCANNED", trackCount.toString())
                 DnaStat("TRACKS WITH LOCAL DNA DATA", identifiedCount.toString())
                 DnaStat("LOCAL GENRES FOUND", genreCounts.size.toString())
+                DnaStat("TRACKS WITH COMPOSER TAGS", tracks.count { it.extra.composers.isNotEmpty() }.toString())
                 genreCounts.forEach { (genre, count) ->
                     DnaStat(genre.uppercase(Locale.getDefault()), "$count TRACKS")
                 }
