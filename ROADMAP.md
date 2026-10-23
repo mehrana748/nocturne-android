@@ -22,7 +22,8 @@
 - [x] Approximate slow/steady/fast tempo filters for tracks with stored BPM
 - [x] Save and delete dynamic local playlists based on favourite, genre, or tempo rules
 - [ ] Validate tempo accuracy against reference tracks; implement key/rhythm analysis and filtering
-- [ ] Advanced multi-rule builder and playlist sorting/management
+- [x] Advanced multi-rule smart playlist builder and sorting by name or matching song count
+- [ ] Smart playlist rename and manual ordering
 
 ## Milestone 0.3 — Stem Lab
 - [ ] Benchmark eligible models (quality, runtime, memory, thermals, licensing)
