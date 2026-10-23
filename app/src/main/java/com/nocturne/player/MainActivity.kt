@@ -774,7 +774,7 @@ private fun MusicDnaPanel(
             Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Default.GraphicEq, contentDescription = null, tint = Mint, modifier = Modifier.size(28.dp))
                 Text("Metadata enrichment is the next engine to connect", color = Ivory, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                Text("Genre tags from the device media index are available offline. Online track identification and audio analysis are not connected yet.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                Text("Local genres and experimental BPM estimates are available offline. Online track identification, key analysis and stem separation are not connected yet.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
                 Spacer(Modifier.height(2.dp))
                 DnaStat("LOCAL TRACKS SCANNED", trackCount.toString())
                 DnaStat("TRACKS WITH LOCAL DNA DATA", identifiedCount.toString())
