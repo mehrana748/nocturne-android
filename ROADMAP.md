@@ -23,7 +23,7 @@
 - [x] Save and delete dynamic local playlists based on favourite, genre, or tempo rules
 - [ ] Validate tempo accuracy against reference tracks; implement key/rhythm analysis and filtering
 - [x] Advanced multi-rule smart playlist builder and sorting by name or matching song count
-- [ ] Smart playlist rename and manual ordering
+- [x] Rename smart playlists and manually reorder them
 
 ## Milestone 0.3 — Stem Lab
 - [ ] Benchmark eligible models (quality, runtime, memory, thermals, licensing)
