@@ -140,6 +140,7 @@ private data class LibraryCollection(
 )
 
 private fun LocalTrack.matchesLibraryRule(rule: String): Boolean = when {
+    rule == "ALL" -> true
     rule == "LIKED" -> isFavorite
     rule.startsWith("GENRE:") -> extra.genre.orEmpty().split(",")
         .any { it.trim().equals(rule.removePrefix("GENRE:"), ignoreCase = true) }
