@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
@@ -53,6 +54,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -68,6 +70,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -104,6 +107,8 @@ import com.nocturne.player.data.LocalLibraryScanner
 import com.nocturne.player.data.LocalTempoAnalyzer
 import com.nocturne.player.data.LocalTrack
 import com.nocturne.player.data.MetadataStore
+import com.nocturne.player.data.SmartPlaylist
+import com.nocturne.player.data.SmartPlaylistStore
 import com.nocturne.player.data.StemType
 import com.nocturne.player.playback.MusicPlaybackService
 import kotlinx.coroutines.Dispatchers
@@ -111,6 +116,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.sin
 
@@ -124,13 +130,33 @@ private val Muted = Color(0xFF929BAD)
 private val ThinLine = Color(0x1AFFFFFF)
 
 private data class LibraryCollection(
-    val key: Long,
+    val key: String,
     val title: String,
     val subtitle: String,
     val trackCount: Int,
     val artworkUri: Uri?,
-    val tracks: List<LocalTrack>
+    val tracks: List<LocalTrack>,
+    val playlistId: String? = null
 )
+
+private fun LocalTrack.matchesLibraryRule(rule: String): Boolean = when {
+    rule == "LIKED" -> isFavorite
+    rule.startsWith("GENRE:") -> extra.genre.orEmpty().split(",")
+        .any { it.trim().equals(rule.removePrefix("GENRE:"), ignoreCase = true) }
+    rule == "TEMPO:SLOW" -> extra.bpm?.let { it <= 90.0 } == true
+    rule == "TEMPO:MID" -> extra.bpm?.let { it > 90.0 && it <= 120.0 } == true
+    rule == "TEMPO:FAST" -> extra.bpm?.let { it > 120.0 } == true
+    else -> false
+}
+
+private fun playlistRuleDescription(rule: String): String = when {
+    rule == "LIKED" -> "All favourite tracks"
+    rule.startsWith("GENRE:") -> "Genre · " + rule.removePrefix("GENRE:")
+    rule == "TEMPO:SLOW" -> "Estimated tempo · ≤90 BPM"
+    rule == "TEMPO:MID" -> "Estimated tempo · 91–120 BPM"
+    rule == "TEMPO:FAST" -> "Estimated tempo · >120 BPM"
+    else -> "Local library rule"
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -161,6 +187,10 @@ private fun NocturneApp() {
     var section by remember { mutableStateOf("MUSIC") }
     var libraryFilter by remember { mutableStateOf("ALL") }
     var libraryView by remember { mutableStateOf("SONGS") }
+    var smartPlaylists by remember { mutableStateOf<List<SmartPlaylist>>(emptyList()) }
+    var showSavePlaylistDialog by remember { mutableStateOf(false) }
+    var playlistName by remember { mutableStateOf("") }
+    var pendingPlaylistRule by remember { mutableStateOf("ALL") }
     var query by remember { mutableStateOf("") }
     var shuffleOn by remember { mutableStateOf(false) }
     var repeatOn by remember { mutableStateOf(false) }
@@ -216,6 +246,7 @@ private fun NocturneApp() {
     }
 
     LaunchedEffect(Unit) {
+        smartPlaylists = SmartPlaylistStore.all(context)
         if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
             scanLibrary()
         } else {
@@ -268,36 +299,37 @@ private fun NocturneApp() {
         track.extra.genre.orEmpty().split(",").map { it.trim() }.filter(String::isNotBlank)
     }.distinctBy { it.lowercase(Locale.ROOT) }.sortedBy { it.lowercase(Locale.ROOT) }
     val visibleTracks = tracks.filter { track ->
-        val matchesFilter = when {
-            libraryFilter == "LIKED" -> track.isFavorite
-            libraryFilter.startsWith("GENRE:") -> track.extra.genre.orEmpty().split(",")
-                .any { it.trim().equals(libraryFilter.removePrefix("GENRE:"), ignoreCase = true) }
-            libraryFilter.startsWith("TEMPO:") -> track.extra.bpm?.let { bpm ->
-                when (libraryFilter) {
-                    "TEMPO:SLOW" -> bpm <= 90.0
-                    "TEMPO:MID" -> bpm > 90.0 && bpm <= 120.0
-                    "TEMPO:FAST" -> bpm > 120.0
-                    else -> false
-                }
-            } == true
-            else -> true
-        }
         val q = query.trim().lowercase(Locale.getDefault())
-        matchesFilter && (q.isBlank() || listOf(track.title, track.artist, track.album, track.extra.genre.orEmpty(), track.extra.composers.joinToString(" "))
-            .any { it.lowercase(Locale.getDefault()).contains(q) })
+        track.matchesLibraryRule(libraryFilter) &&
+            (q.isBlank() || listOf(track.title, track.artist, track.album, track.extra.genre.orEmpty(), track.extra.composers.joinToString(" "))
+                .any { it.lowercase(Locale.getDefault()).contains(q) })
     }
     val visibleCollections = when (libraryView) {
         "ALBUMS" -> visibleTracks.groupBy { it.album.lowercase(Locale.ROOT) to it.artist.lowercase(Locale.ROOT) }
             .values.map { collectionTracks ->
                 val first = collectionTracks.first()
-                LibraryCollection(first.id, first.album, first.artist, collectionTracks.size, first.albumArtUri, collectionTracks)
+                LibraryCollection("album:" + first.id, first.album, first.artist, collectionTracks.size, first.albumArtUri, collectionTracks)
             }.sortedBy { it.title.lowercase(Locale.ROOT) }
         "ARTISTS" -> visibleTracks.groupBy { it.artist.lowercase(Locale.ROOT) }
             .values.map { collectionTracks ->
                 val first = collectionTracks.first()
                 val albumCount = collectionTracks.map { it.album }.distinct().size
-                LibraryCollection(first.id, first.artist, albumCount.toString() + " albums", collectionTracks.size, first.albumArtUri, collectionTracks)
+                LibraryCollection("artist:" + first.id, first.artist, albumCount.toString() + " albums", collectionTracks.size, first.albumArtUri, collectionTracks)
             }.sortedBy { it.title.lowercase(Locale.ROOT) }
+        "PLAYLISTS" -> smartPlaylists
+            .filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
+            .map { playlist ->
+                val matchingTracks = tracks.filter { it.matchesLibraryRule(playlist.filterRule) }
+                LibraryCollection(
+                    key = "playlist:" + playlist.id,
+                    title = playlist.name,
+                    subtitle = playlistRuleDescription(playlist.filterRule),
+                    trackCount = matchingTracks.size,
+                    artworkUri = matchingTracks.firstOrNull()?.albumArtUri,
+                    tracks = matchingTracks,
+                    playlistId = playlist.id
+                )
+            }
         else -> emptyList()
     }
 
@@ -341,6 +373,16 @@ private fun NocturneApp() {
     fun toggleFavorite(track: LocalTrack) {
         val liked = FavoritesStore.toggle(context, track.id)
         tracks = tracks.map { if (it.id == track.id) it.copy(isFavorite = liked) else it }
+    }
+
+    fun createSmartPlaylist() {
+        val name = playlistName.trim()
+        if (name.isBlank() || pendingPlaylistRule == "ALL") return
+        val playlist = SmartPlaylist(UUID.randomUUID().toString(), name, pendingPlaylistRule)
+        SmartPlaylistStore.add(context, playlist)
+        smartPlaylists = SmartPlaylistStore.all(context)
+        playlistName = ""
+        showSavePlaylistDialog = false
     }
 
     fun analyzeTempo(track: LocalTrack) {
@@ -439,7 +481,12 @@ private fun NocturneApp() {
                                 genres = availableGenres,
                                 hasTempoData = tracks.any { it.extra.bpm != null },
                                 view = libraryView,
-                                onView = { libraryView = it }
+                                onView = { libraryView = it },
+                                onSaveFilter = {
+                                    pendingPlaylistRule = libraryFilter
+                                    playlistName = ""
+                                    showSavePlaylistDialog = true
+                                }
                             )
                         }
                         if (scanning && tracks.isEmpty()) {
@@ -480,7 +527,10 @@ private fun NocturneApp() {
                                 CollectionRow(
                                     collection = collection,
                                     isCurrent = collection.tracks.any { it.id.toString() == currentId },
-                                    onClick = { collection.tracks.firstOrNull()?.let { playTrack(it, collection.tracks) } }
+                                    onClick = { collection.tracks.firstOrNull()?.let { playTrack(it, collection.tracks) } },
+                                    onDelete = collection.playlistId?.let { id ->
+                                        { SmartPlaylistStore.remove(context, id); smartPlaylists = SmartPlaylistStore.all(context) }
+                                    }
                                 )
                             }
                         }
@@ -516,6 +566,34 @@ private fun NocturneApp() {
                     onPlayPause = { if (controller?.isPlaying == true) controller?.pause() else controller?.play() },
                     onNext = { controller?.seekToNextMediaItem() },
                     modifier = Modifier.align(Alignment.BottomCenter)
+                )
+            }
+
+            if (showSavePlaylistDialog) {
+                AlertDialog(
+                    onDismissRequest = { showSavePlaylistDialog = false },
+                    title = { Text("Save smart playlist") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("This playlist keeps its rule and updates when your library changes. Search text is not saved.", color = Muted, fontSize = 12.sp)
+                            OutlinedTextField(
+                                value = playlistName,
+                                onValueChange = { playlistName = it },
+                                singleLine = true,
+                                label = { Text("Playlist name") }
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = ::createSmartPlaylist, enabled = playlistName.isNotBlank()) {
+                            Text("Save")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showSavePlaylistDialog = false }) {
+                            Text("Cancel")
+                        }
+                    }
                 )
             }
         }
@@ -743,7 +821,8 @@ private fun LibraryHeader(
     genres: List<String>,
     hasTempoData: Boolean,
     view: String,
-    onView: (String) -> Unit
+    onView: (String) -> Unit,
+    onSaveFilter: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -775,7 +854,7 @@ private fun LibraryHeader(
             shape = RoundedCornerShape(15.dp)
         )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(listOf("SONGS", "ALBUMS", "ARTISTS"), key = { it }) { option ->
+            items(listOf("SONGS", "ALBUMS", "ARTISTS", "PLAYLISTS"), key = { it }) { option ->
                 FilterChip(
                     selected = view == option,
                     onClick = { onView(option) },
@@ -783,7 +862,7 @@ private fun LibraryHeader(
                 )
             }
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (view != "PLAYLISTS") LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 FilterChip(selected = filter == "ALL", onClick = { onFilter("ALL") }, label = { Text("All tracks") })
             }
@@ -815,11 +894,23 @@ private fun LibraryHeader(
                 }
             }
         }
+        if (filter != "ALL" && view != "PLAYLISTS") {
+            Button(
+                onClick = onSaveFilter,
+                colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Night),
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Save filter as smart playlist", fontWeight = FontWeight.SemiBold) }
+        }
     }
 }
 
 @Composable
-private fun CollectionRow(collection: LibraryCollection, isCurrent: Boolean, onClick: () -> Unit) {
+private fun CollectionRow(
+    collection: LibraryCollection,
+    isCurrent: Boolean,
+    onClick: () -> Unit,
+    onDelete: (() -> Unit)? = null
+) {
     Surface(
         color = if (isCurrent) Mint.copy(alpha = 0.075f) else Color.White.copy(alpha = 0.025f),
         shape = RoundedCornerShape(17.dp),
@@ -838,6 +929,11 @@ private fun CollectionRow(collection: LibraryCollection, isCurrent: Boolean, onC
                 Text(collection.subtitle, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
             }
             Text(collection.trackCount.toString() + " tracks", color = Muted, fontSize = 9.sp)
+            if (onDelete != null) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete playlist", tint = Muted, modifier = Modifier.size(17.dp))
+                }
+            }
             Icon(Icons.Default.PlayArrow, contentDescription = "Play " + collection.title, tint = Mint)
         }
     }
