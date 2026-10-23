@@ -191,6 +191,8 @@ private fun NocturneApp() {
     var libraryFilter by remember { mutableStateOf("ALL") }
     var libraryView by remember { mutableStateOf("SONGS") }
     var playlistSort by remember { mutableStateOf("NAME") }
+    var editingSmartPlaylist by remember { mutableStateOf<SmartPlaylist?>(null) }
+    var renamePlaylistName by remember { mutableStateOf("") }
     var smartPlaylists by remember { mutableStateOf<List<SmartPlaylist>>(emptyList()) }
     var showSavePlaylistDialog by remember { mutableStateOf(false) }
     var playlistName by remember { mutableStateOf("") }
@@ -343,6 +345,9 @@ private fun NocturneApp() {
                         compareByDescending<LibraryCollection> { it.trackCount }
                             .thenBy { it.title.lowercase(Locale.ROOT) }
                     )
+                    "MANUAL" -> playlists.sortedBy { collection ->
+                        smartPlaylists.indexOfFirst { it.id == collection.playlistId }
+                    }
                     else -> playlists.sortedBy { it.title.lowercase(Locale.ROOT) }
                 }
             }
@@ -404,6 +409,20 @@ private fun NocturneApp() {
         smartPlaylists = SmartPlaylistStore.all(context)
         playlistName = ""
         showSavePlaylistDialog = false
+    }
+
+    fun renameSmartPlaylist() {
+        val playlist = editingSmartPlaylist ?: return
+        val name = renamePlaylistName.trim()
+        if (name.isBlank()) return
+        SmartPlaylistStore.update(context, playlist.copy(name = name))
+        smartPlaylists = SmartPlaylistStore.all(context)
+        editingSmartPlaylist = null
+    }
+
+    fun moveSmartPlaylist(id: String, offset: Int) {
+        SmartPlaylistStore.move(context, id, offset)
+        smartPlaylists = SmartPlaylistStore.all(context)
     }
 
     fun analyzeTempo(track: LocalTrack) {
@@ -518,7 +537,7 @@ private fun NocturneApp() {
                             item {
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(
-                                        listOf("NAME" to "Name A–Z", "MOST_TRACKS" to "Most tracks"),
+                                        listOf("NAME" to "Name A–Z", "MOST_TRACKS" to "Most tracks", "MANUAL" to "Manual order"),
                                         key = { it.first }
                                     ) { (sort, label) ->
                                         FilterChip(
@@ -571,7 +590,20 @@ private fun NocturneApp() {
                                     onClick = { collection.tracks.firstOrNull()?.let { playTrack(it, collection.tracks) } },
                                     onDelete = collection.playlistId?.let { id ->
                                         { SmartPlaylistStore.remove(context, id); smartPlaylists = SmartPlaylistStore.all(context) }
-                                    }
+                                    },
+                                    onRename = collection.playlistId?.let { id ->
+                                        {
+                                            editingSmartPlaylist = smartPlaylists.firstOrNull { it.id == id }
+                                            renamePlaylistName = smartPlaylists.firstOrNull { it.id == id }?.name.orEmpty()
+                                        }
+                                    },
+                                    onMoveUp = collection.playlistId?.takeIf {
+                                        playlistSort == "MANUAL" && smartPlaylists.indexOfFirst { p -> p.id == it } > 0
+                                    }?.let { id -> { moveSmartPlaylist(id, -1) } },
+                                    onMoveDown = collection.playlistId?.takeIf {
+                                        playlistSort == "MANUAL" &&
+                                            smartPlaylists.indexOfFirst { p -> p.id == it } in 0 until smartPlaylists.lastIndex
+                                    }?.let { id -> { moveSmartPlaylist(id, 1) } }
                                 )
                             }
                         }
@@ -609,6 +641,14 @@ private fun NocturneApp() {
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
+
+            SmartPlaylistRenameDialog(
+                visible = editingSmartPlaylist != null,
+                name = renamePlaylistName,
+                onNameChange = { renamePlaylistName = it },
+                onDismiss = { editingSmartPlaylist = null },
+                onSave = ::renameSmartPlaylist
+            )
 
             SmartPlaylistBuilderDialog(
                 visible = showSavePlaylistDialog,
@@ -1026,7 +1066,10 @@ private fun CollectionRow(
     collection: LibraryCollection,
     isCurrent: Boolean,
     onClick: () -> Unit,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    onRename: (() -> Unit)? = null,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null
 ) {
     Surface(
         color = if (isCurrent) Mint.copy(alpha = 0.075f) else Color.White.copy(alpha = 0.025f),
@@ -1035,23 +1078,32 @@ private fun CollectionRow(
             .border(1.dp, if (isCurrent) Mint.copy(alpha = 0.19f) else ThinLine, RoundedCornerShape(17.dp))
             .clickable(onClick = onClick)
     ) {
-        Row(
-            Modifier.padding(horizontal = 11.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(11.dp)
-        ) {
-            AlbumArtwork(collection.artworkUri, Modifier.size(52.dp))
-            Column(Modifier.weight(1f)) {
-                Text(collection.title, color = if (isCurrent) Mint else Ivory, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(collection.subtitle, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+        Column(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.padding(horizontal = 11.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(11.dp)
+            ) {
+                AlbumArtwork(collection.artworkUri, Modifier.size(52.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(collection.title, color = if (isCurrent) Mint else Ivory, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(collection.subtitle, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                }
+                Text(collection.trackCount.toString() + " tracks", color = Muted, fontSize = 9.sp)
+                Icon(Icons.Default.PlayArrow, contentDescription = "Play " + collection.title, tint = Mint)
             }
-            Text(collection.trackCount.toString() + " tracks", color = Muted, fontSize = 9.sp)
-            if (onDelete != null) {
-                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete playlist", tint = Muted, modifier = Modifier.size(17.dp))
+            if (onRename != null || onDelete != null || onMoveUp != null || onMoveDown != null) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    onRename?.let { action -> TextButton(onClick = action) { Text("Rename", fontSize = 11.sp) } }
+                    onMoveUp?.let { action -> TextButton(onClick = action) { Text("↑", fontSize = 15.sp) } }
+                    onMoveDown?.let { action -> TextButton(onClick = action) { Text("↓", fontSize = 15.sp) } }
+                    onDelete?.let { action -> TextButton(onClick = action) { Text("Delete", fontSize = 11.sp) } }
                 }
             }
-            Icon(Icons.Default.PlayArrow, contentDescription = "Play " + collection.title, tint = Mint)
         }
     }
 }
