@@ -8,10 +8,12 @@
 - [x] Album-art lookup from local media provider
 - [x] Metadata cache schema and AI engine contracts
 - [x] GitHub Actions workflow configured to produce a debug APK artifact
-- [ ] APK build verification / device QA
+- [x] APK build verification on GitHub Actions
+- [ ] Install and playback QA on a physical Android device
 
 ## Milestone 0.2 — Music DNA
 - [ ] AcoustID/MusicBrainz provider adapter and commercial-use review
+- [x] Offline genre extraction from MediaStore and genre filtering in the library
 - [ ] Embedded tag extraction and metadata reconciliation
 - [ ] Fingerprint queue, retry strategy, rate limiting, confidence/source tracking
 - [ ] Local BPM/key/rhythm analysis and cached results
