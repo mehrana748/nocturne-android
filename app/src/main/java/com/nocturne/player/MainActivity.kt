@@ -552,7 +552,7 @@ private fun Waveform(isPlaying: Boolean, modifier: Modifier = Modifier) {
         val gap = 3.dp.toPx()
         val barWidth = ((size.width - gap * (count - 1)) / count).coerceAtLeast(1f)
         for (i in 0 until count) {
-            val wave = abs(sin(i * 0.49))
+            val wave = abs(sin(i * 0.49)).toFloat()
             val h = size.height * (0.18f + wave * if (isPlaying) 0.76f else 0.48f)
             val x = i * (barWidth + gap)
             drawRoundRect(
