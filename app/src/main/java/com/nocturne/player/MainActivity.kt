@@ -100,7 +100,9 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.nocturne.player.data.FavoritesStore
 import com.nocturne.player.data.LocalLibraryScanner
+import com.nocturne.player.data.LocalTempoAnalyzer
 import com.nocturne.player.data.LocalTrack
+import com.nocturne.player.data.MetadataStore
 import com.nocturne.player.data.StemType
 import com.nocturne.player.playback.MusicPlaybackService
 import kotlinx.coroutines.Dispatchers
@@ -150,6 +152,8 @@ private fun NocturneApp() {
     var query by remember { mutableStateOf("") }
     var shuffleOn by remember { mutableStateOf(false) }
     var repeatOn by remember { mutableStateOf(false) }
+    var tempoAnalysisTrackId by remember { mutableStateOf<Long?>(null) }
+    var tempoAnalysisMessage by remember { mutableStateOf<String?>(null) }
 
     val controllerFuture = remember(context) {
         MediaController.Builder(
@@ -291,6 +295,33 @@ private fun NocturneApp() {
         tracks = tracks.map { if (it.id == track.id) it.copy(isFavorite = liked) else it }
     }
 
+    fun analyzeTempo(track: LocalTrack) {
+        if (tempoAnalysisTrackId != null) return
+        scope.launch {
+            tempoAnalysisTrackId = track.id
+            tempoAnalysisMessage = "Analyzing the first 30 seconds on this device…"
+            try {
+                val bpm = withContext(Dispatchers.IO) { LocalTempoAnalyzer.estimateBpm(context, track.uri) }
+                if (bpm == null) {
+                    tempoAnalysisMessage = "Could not estimate tempo. This file may be too short or unsupported by the device decoder."
+                } else {
+                    val updated = track.extra.copy(
+                        bpm = bpm,
+                        source = "NOCTURNE_LOCAL_TEMPO",
+                        analyzedAtEpochMs = System.currentTimeMillis()
+                    )
+                    MetadataStore.save(context, track.id, updated)
+                    tracks = tracks.map { if (it.id == track.id) it.copy(extra = updated) else it }
+                    tempoAnalysisMessage = "Estimated tempo: ${bpm.toInt()} BPM · saved locally"
+                }
+            } catch (_: Exception) {
+                tempoAnalysisMessage = "Local tempo analysis failed for this audio file."
+            } finally {
+                tempoAnalysisTrackId = null
+            }
+        }
+    }
+
     MaterialTheme(colorScheme = darkColorScheme(
         primary = Mint,
         secondary = Periwinkle,
@@ -377,7 +408,16 @@ private fun NocturneApp() {
                             }
                         }
                     }
-                    "MUSIC DNA" -> item { MusicDnaPanel(trackCount = tracks.size, tracks = tracks) }
+                    "MUSIC DNA" -> item {
+                        MusicDnaPanel(
+                            trackCount = tracks.size,
+                            tracks = tracks,
+                            selectedTrack = currentTrack,
+                            isAnalyzing = tempoAnalysisTrackId != null,
+                            status = tempoAnalysisMessage,
+                            onAnalyzeTempo = ::analyzeTempo
+                        )
+                    }
                     else -> item { StemLabPanel() }
                 }
                 item {
@@ -715,7 +755,14 @@ private fun LoadingCard() {
 }
 
 @Composable
-private fun MusicDnaPanel(trackCount: Int, tracks: List<LocalTrack>) {
+private fun MusicDnaPanel(
+    trackCount: Int,
+    tracks: List<LocalTrack>,
+    selectedTrack: LocalTrack?,
+    isAnalyzing: Boolean,
+    status: String?,
+    onAnalyzeTempo: (LocalTrack) -> Unit
+) {
     val identifiedCount = tracks.count { it.extra.genre != null || it.extra.bpm != null || it.extra.musicalKey != null || it.extra.composers.isNotEmpty() }
     val genreCounts = tracks.flatMap { track ->
         track.extra.genre.orEmpty().split(",").map { it.trim() }.filter(String::isNotBlank)
@@ -736,7 +783,27 @@ private fun MusicDnaPanel(trackCount: Int, tracks: List<LocalTrack>) {
                 genreCounts.forEach { (genre, count) ->
                     DnaStat(genre.uppercase(Locale.getDefault()), "$count TRACKS")
                 }
-                DnaStat("OFFLINE AUDIO ANALYSIS", "MODEL NOT CONNECTED")
+                DnaStat("OFFLINE AUDIO ANALYSIS", "LOCAL BPM")
+                Spacer(Modifier.height(4.dp))
+                if (selectedTrack == null) {
+                    Text("Start a song from your library to analyze its tempo here.", color = Muted, fontSize = 11.sp)
+                } else {
+                    Text("NOW PLAYING", color = Muted, fontSize = 9.sp, letterSpacing = 1.sp)
+                    Text(selectedTrack.title, color = Ivory, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    DnaStat("TEMPO ESTIMATE", selectedTrack.extra.bpm?.let { "${it.toInt()} BPM" } ?: "NOT ANALYZED")
+                    Button(
+                        enabled = !isAnalyzing,
+                        onClick = { onAnalyzeTempo(selectedTrack) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Night)
+                    ) {
+                        Text(
+                            if (isAnalyzing) "Analyzing audio…" else if (selectedTrack.extra.bpm != null) "Re-analyze tempo" else "Analyze tempo",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text("Uses up to 30 seconds of audio locally. The audio is not uploaded.", color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
+                }
+                status?.let { Text(it, color = Mint, fontSize = 11.sp, lineHeight = 16.sp) }
             }
         }
         Text("Planned filters", color = Ivory, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
