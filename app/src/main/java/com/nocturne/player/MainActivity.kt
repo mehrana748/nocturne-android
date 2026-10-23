@@ -275,7 +275,8 @@ private fun NocturneApp() {
             status = "پلیر در حال آماده‌شدن است؛ یک لحظه دیگر تلاش کن."
             return
         }
-        val mediaItems = tracks.map { item ->
+        val queueTracks = visibleTracks.ifEmpty { listOf(track) }
+        val mediaItems = queueTracks.map { item ->
             val metadata = MediaMetadata.Builder()
                 .setTitle(item.title)
                 .setArtist(item.artist)
@@ -288,7 +289,7 @@ private fun NocturneApp() {
                 .setMediaMetadata(metadata)
                 .build()
         }
-        val index = tracks.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+        val index = queueTracks.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
         c.setMediaItems(mediaItems, index, 0L)
         c.prepare()
         c.play()
@@ -375,7 +376,12 @@ private fun NocturneApp() {
                         onPlayPause = {
                             val c = controller
                             if (c == null) return@NowPlayingCard
-                            if (c.isPlaying) c.pause() else if (c.currentMediaItem == null) tracks.firstOrNull()?.let(::playTrack) else c.play()
+                            if (c.isPlaying) {
+                                c.pause()
+                            } else if (c.currentMediaItem == null) {
+                                visibleTracks.firstOrNull()?.let(::playTrack)
+                                    ?: run { status = "No songs match the current library filter." }
+                            } else c.play()
                         },
                         onPrevious = ::previousTrack,
                         onNext = { controller?.seekToNextMediaItem() },
