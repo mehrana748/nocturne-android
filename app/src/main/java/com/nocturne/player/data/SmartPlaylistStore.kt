@@ -8,7 +8,7 @@ import org.json.JSONObject
 data class SmartPlaylist(
     val id: String,
     val name: String,
-    val filterRule: String
+    val filterRules: List<String>
 )
 
 object SmartPlaylistStore {
@@ -25,8 +25,15 @@ object SmartPlaylistStore {
                     val item = array.optJSONObject(index) ?: continue
                     val id = item.optString("id").takeIf(String::isNotBlank) ?: continue
                     val name = item.optString("name").trim().takeIf(String::isNotBlank) ?: continue
-                    val rule = item.optString("filterRule").takeIf(String::isNotBlank) ?: continue
-                    add(SmartPlaylist(id, name, rule))
+                    val rules = item.optJSONArray("filterRules")?.let { array ->
+                        buildList {
+                            for (ruleIndex in 0 until array.length()) {
+                                array.optString(ruleIndex).takeIf(String::isNotBlank)?.let(::add)
+                            }
+                        }
+                    } ?: item.optString("filterRule").takeIf(String::isNotBlank)?.let(::listOf)
+                    if (rules.isNullOrEmpty()) continue
+                    add(SmartPlaylist(id, name, rules))
                 }
             }
         }.getOrDefault(emptyList())
@@ -47,7 +54,7 @@ object SmartPlaylistStore {
                 JSONObject()
                     .put("id", playlist.id)
                     .put("name", playlist.name)
-                    .put("filterRule", playlist.filterRule)
+                    .put("filterRules", JSONArray(playlist.filterRules))
             )
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
