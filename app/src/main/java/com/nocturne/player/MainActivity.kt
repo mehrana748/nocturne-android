@@ -603,6 +603,95 @@ private fun NocturneApp() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SmartPlaylistBuilderDialog(
+    visible: Boolean,
+    name: String,
+    onNameChange: (String) -> Unit,
+    genres: List<String>,
+    selectedGenre: String?,
+    onGenreChange: (String?) -> Unit,
+    selectedTempoRule: String?,
+    onTempoChange: (String?) -> Unit,
+    favouritesOnly: Boolean,
+    onFavouritesOnlyChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    if (!visible) return
+    val hasRules = selectedGenre != null || selectedTempoRule != null || favouritesOnly
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Build a smart playlist") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Choose any combination. Every selected rule must match. The playlist updates with your library; search text is not saved.", color = Muted, fontSize = 12.sp, lineHeight = 17.sp)
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = onNameChange,
+                    singleLine = true,
+                    label = { Text("Playlist name") }
+                )
+                Text("Genre", color = Ivory, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item {
+                        FilterChip(
+                            selected = selectedGenre == null,
+                            onClick = { onGenreChange(null) },
+                            label = { Text("Any genre") }
+                        )
+                    }
+                    items(genres, key = { it }) { genre ->
+                        FilterChip(
+                            selected = selectedGenre.equals(genre, ignoreCase = true),
+                            onClick = { onGenreChange(if (selectedGenre.equals(genre, ignoreCase = true)) null else genre) },
+                            label = { Text(genre, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        )
+                    }
+                }
+                Text("Tempo estimate", color = Ivory, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item {
+                        FilterChip(
+                            selected = selectedTempoRule == null,
+                            onClick = { onTempoChange(null) },
+                            label = { Text("Any tempo") }
+                        )
+                    }
+                    items(
+                        listOf(
+                            "TEMPO:SLOW" to "Slow · ≤90",
+                            "TEMPO:MID" to "Steady · 91–120",
+                            "TEMPO:FAST" to "Fast · >120"
+                        ),
+                        key = { it.first }
+                    ) { (rule, label) ->
+                        FilterChip(
+                            selected = selectedTempoRule == rule,
+                            onClick = { onTempoChange(if (selectedTempoRule == rule) null else rule) },
+                            label = { Text(label, maxLines = 1) }
+                        )
+                    }
+                }
+                FilterChip(
+                    selected = favouritesOnly,
+                    onClick = { onFavouritesOnlyChange(!favouritesOnly) },
+                    label = { Text("Favourites only") }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onSave, enabled = name.isNotBlank() && hasRules) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
 @Composable
 private fun Header(scanning: Boolean, onScan: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
