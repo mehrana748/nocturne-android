@@ -1043,10 +1043,10 @@ private fun MusicDnaPanel(
                 status?.let { Text(it, color = Mint, fontSize = 11.sp, lineHeight = 16.sp) }
             }
         }
-        Text("Available and planned filters", color = Ivory, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { MetadataPill("GENRE · ACTIVE"); MetadataPill("BPM BANDS · ESTIMATE"); MetadataPill("KEY · PLANNED") }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { MetadataPill("INSTRUMENTS"); MetadataPill("ENERGY"); MetadataPill("MOOD") }
-        Text("Tempo bands use approximate local estimates and appear only after a track is analyzed. Key, instruments, energy and mood analysis are not connected yet.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+        Text("Filters and smart playlists", color = Ivory, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { MetadataPill("GENRE · ACTIVE"); MetadataPill("BPM BANDS · ESTIMATE"); MetadataPill("PLAYLISTS · ACTIVE") }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { MetadataPill("KEY · PLANNED"); MetadataPill("INSTRUMENTS"); MetadataPill("ENERGY") }
+        Text("Save a favourite, genre or tempo filter as a local smart playlist; it updates as your library changes. Tempo bands use approximate estimates. Key and instrument analysis are not connected yet.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
     }
 }
 
