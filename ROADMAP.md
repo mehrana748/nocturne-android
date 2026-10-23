@@ -19,6 +19,7 @@
 - [ ] Broader embedded tag extraction and metadata reconciliation
 - [ ] Fingerprint queue, retry strategy, rate limiting, confidence/source tracking
 - [x] User-triggered on-device BPM estimate from up to 30 seconds of a local track; cached per track
+- [x] Approximate slow/steady/fast tempo filters for tracks with stored BPM
 - [ ] Validate tempo accuracy against reference tracks; implement key/rhythm analysis and filtering
 - [ ] Filter builder and rule-based smart playlists
 
