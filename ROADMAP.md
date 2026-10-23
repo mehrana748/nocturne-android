@@ -5,6 +5,7 @@
 - [x] MediaStore local library scanner
 - [x] Media3 playback engine and MediaSession service
 - [x] Search and persistent favourites
+- [x] Browse and play filtered queues by song, album, or artist
 - [x] Album-art lookup from local media provider
 - [x] Metadata cache schema and AI engine contracts
 - [x] GitHub Actions workflow configured to produce a debug APK artifact
