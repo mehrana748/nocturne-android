@@ -272,6 +272,14 @@ private fun NocturneApp() {
             libraryFilter == "LIKED" -> track.isFavorite
             libraryFilter.startsWith("GENRE:") -> track.extra.genre.orEmpty().split(",")
                 .any { it.trim().equals(libraryFilter.removePrefix("GENRE:"), ignoreCase = true) }
+            libraryFilter.startsWith("TEMPO:") -> track.extra.bpm?.let { bpm ->
+                when (libraryFilter) {
+                    "TEMPO:SLOW" -> bpm <= 90.0
+                    "TEMPO:MID" -> bpm > 90.0 && bpm <= 120.0
+                    "TEMPO:FAST" -> bpm > 120.0
+                    else -> false
+                }
+            } == true
             else -> true
         }
         val q = query.trim().lowercase(Locale.getDefault())
@@ -429,6 +437,7 @@ private fun NocturneApp() {
                                 filter = libraryFilter,
                                 onFilter = { libraryFilter = it },
                                 genres = availableGenres,
+                                hasTempoData = tracks.any { it.extra.bpm != null },
                                 view = libraryView,
                                 onView = { libraryView = it }
                             )
@@ -732,6 +741,7 @@ private fun LibraryHeader(
     filter: String,
     onFilter: (String) -> Unit,
     genres: List<String>,
+    hasTempoData: Boolean,
     view: String,
     onView: (String) -> Unit
 ) {
@@ -787,6 +797,22 @@ private fun LibraryHeader(
                     onClick = { onFilter(genreFilter) },
                     label = { Text(genre, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 )
+            }
+            if (hasTempoData) {
+                items(
+                    listOf(
+                        "TEMPO:SLOW" to "Slow · ≤90 BPM",
+                        "TEMPO:MID" to "Steady · 91–120 BPM",
+                        "TEMPO:FAST" to "Fast · >120 BPM"
+                    ),
+                    key = { it.first }
+                ) { (tempoFilter, label) ->
+                    FilterChip(
+                        selected = filter == tempoFilter,
+                        onClick = { onFilter(tempoFilter) },
+                        label = { Text(label, maxLines = 1) }
+                    )
+                }
             }
         }
     }
@@ -920,10 +946,10 @@ private fun MusicDnaPanel(
                 status?.let { Text(it, color = Mint, fontSize = 11.sp, lineHeight = 16.sp) }
             }
         }
-        Text("Planned filters", color = Ivory, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { MetadataPill("GENRE"); MetadataPill("BPM RANGE"); MetadataPill("KEY") }
+        Text("Available and planned filters", color = Ivory, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { MetadataPill("GENRE · ACTIVE"); MetadataPill("BPM BANDS · ESTIMATE"); MetadataPill("KEY · PLANNED") }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { MetadataPill("INSTRUMENTS"); MetadataPill("ENERGY"); MetadataPill("MOOD") }
-        Text("Filters become active after the metadata providers and on-device audio analysis model are integrated.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+        Text("Tempo bands use approximate local estimates and appear only after a track is analyzed. Key, instruments, energy and mood analysis are not connected yet.", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
     }
 }
 
