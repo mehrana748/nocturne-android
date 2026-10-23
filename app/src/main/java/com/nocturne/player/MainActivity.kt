@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -242,8 +243,16 @@ private fun NocturneApp() {
     }
 
     val currentTrack = tracks.firstOrNull { it.id.toString() == currentId }
+    val availableGenres = tracks.flatMap { track ->
+        track.extra.genre.orEmpty().split(",").map { it.trim() }.filter(String::isNotBlank)
+    }.distinctBy { it.lowercase(Locale.ROOT) }.sortedBy { it.lowercase(Locale.ROOT) }
     val visibleTracks = tracks.filter { track ->
-        val matchesFilter = libraryFilter != "LIKED" || track.isFavorite
+        val matchesFilter = when {
+            libraryFilter == "LIKED" -> track.isFavorite
+            libraryFilter.startsWith("GENRE:") -> track.extra.genre.orEmpty().split(",")
+                .any { it.trim().equals(libraryFilter.removePrefix("GENRE:"), ignoreCase = true) }
+            else -> true
+        }
         val q = query.trim().lowercase(Locale.getDefault())
         matchesFilter && (q.isBlank() || listOf(track.title, track.artist, track.album).any { it.lowercase(Locale.getDefault()).contains(q) })
     }
@@ -340,7 +349,8 @@ private fun NocturneApp() {
                                 query = query,
                                 onQuery = { query = it },
                                 filter = libraryFilter,
-                                onFilter = { libraryFilter = it }
+                                onFilter = { libraryFilter = it },
+                                genres = availableGenres
                             )
                         }
                         if (scanning && tracks.isEmpty()) {
@@ -601,7 +611,8 @@ private fun LibraryHeader(
     query: String,
     onQuery: (String) -> Unit,
     filter: String,
-    onFilter: (String) -> Unit
+    onFilter: (String) -> Unit,
+    genres: List<String>
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -632,9 +643,21 @@ private fun LibraryHeader(
             ),
             shape = RoundedCornerShape(15.dp)
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = filter == "ALL", onClick = { onFilter("ALL") }, label = { Text("All tracks") })
-            FilterChip(selected = filter == "LIKED", onClick = { onFilter("LIKED") }, label = { Text("♥ Favourites") })
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                FilterChip(selected = filter == "ALL", onClick = { onFilter("ALL") }, label = { Text("All tracks") })
+            }
+            item {
+                FilterChip(selected = filter == "LIKED", onClick = { onFilter("LIKED") }, label = { Text("♥ Favourites") })
+            }
+            items(genres, key = { it }) { genre ->
+                val genreFilter = "GENRE:" + genre.lowercase(Locale.ROOT)
+                FilterChip(
+                    selected = filter == genreFilter,
+                    onClick = { onFilter(genreFilter) },
+                    label = { Text(genre, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                )
+            }
         }
     }
 }
