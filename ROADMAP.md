@@ -14,7 +14,8 @@
 ## Milestone 0.2 — Music DNA
 - [ ] AcoustID/MusicBrainz provider adapter and commercial-use review
 - [x] Offline genre extraction from MediaStore and genre filtering in the library
-- [ ] Embedded tag extraction and metadata reconciliation
+- [x] Composer tags from Android MediaStore included in Music DNA and library search
+- [ ] Broader embedded tag extraction and metadata reconciliation
 - [ ] Fingerprint queue, retry strategy, rate limiting, confidence/source tracking
 - [ ] Local BPM/key/rhythm analysis and cached results
 - [ ] Filter builder and rule-based smart playlists
