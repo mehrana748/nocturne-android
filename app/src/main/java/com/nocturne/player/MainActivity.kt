@@ -150,14 +150,16 @@ private fun LocalTrack.matchesLibraryRule(rule: String): Boolean = when {
     else -> false
 }
 
-private fun playlistRuleDescription(rule: String): String = when {
-    rule == "LIKED" -> "All favourite tracks"
-    rule.startsWith("GENRE:") -> "Genre · " + rule.removePrefix("GENRE:")
-    rule == "TEMPO:SLOW" -> "Estimated tempo · ≤90 BPM"
-    rule == "TEMPO:MID" -> "Estimated tempo · 91–120 BPM"
-    rule == "TEMPO:FAST" -> "Estimated tempo · >120 BPM"
-    else -> "Local library rule"
-}
+private fun playlistRuleDescription(rules: List<String>): String = rules.map { rule ->
+    when {
+        rule == "LIKED" -> "Favourites"
+        rule.startsWith("GENRE:") -> "Genre: " + rule.removePrefix("GENRE:")
+        rule == "TEMPO:SLOW" -> "Tempo ≤90 BPM"
+        rule == "TEMPO:MID" -> "Tempo 91–120 BPM"
+        rule == "TEMPO:FAST" -> "Tempo >120 BPM"
+        else -> "Local rule"
+    }
+}.joinToString(" + ")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -191,7 +193,9 @@ private fun NocturneApp() {
     var smartPlaylists by remember { mutableStateOf<List<SmartPlaylist>>(emptyList()) }
     var showSavePlaylistDialog by remember { mutableStateOf(false) }
     var playlistName by remember { mutableStateOf("") }
-    var pendingPlaylistRule by remember { mutableStateOf("ALL") }
+    var playlistGenre by remember { mutableStateOf<String?>(null) }
+    var playlistTempoRule by remember { mutableStateOf<String?>(null) }
+    var playlistFavouritesOnly by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var shuffleOn by remember { mutableStateOf(false) }
     var repeatOn by remember { mutableStateOf(false) }
@@ -320,11 +324,13 @@ private fun NocturneApp() {
         "PLAYLISTS" -> smartPlaylists
             .filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
             .map { playlist ->
-                val matchingTracks = tracks.filter { it.matchesLibraryRule(playlist.filterRule) }
+                val matchingTracks = tracks.filter { track ->
+                    playlist.filterRules.all(track::matchesLibraryRule)
+                }
                 LibraryCollection(
                     key = "playlist:" + playlist.id,
                     title = playlist.name,
-                    subtitle = playlistRuleDescription(playlist.filterRule),
+                    subtitle = playlistRuleDescription(playlist.filterRules),
                     trackCount = matchingTracks.size,
                     artworkUri = matchingTracks.firstOrNull()?.albumArtUri,
                     tracks = matchingTracks,
@@ -378,8 +384,13 @@ private fun NocturneApp() {
 
     fun createSmartPlaylist() {
         val name = playlistName.trim()
-        if (name.isBlank() || pendingPlaylistRule == "ALL") return
-        val playlist = SmartPlaylist(UUID.randomUUID().toString(), name, pendingPlaylistRule)
+        val rules = buildList {
+            playlistGenre?.let { add("GENRE:" + it.lowercase(Locale.ROOT)) }
+            playlistTempoRule?.let(::add)
+            if (playlistFavouritesOnly) add("LIKED")
+        }
+        if (name.isBlank() || rules.isEmpty()) return
+        val playlist = SmartPlaylist(UUID.randomUUID().toString(), name, rules)
         SmartPlaylistStore.add(context, playlist)
         smartPlaylists = SmartPlaylistStore.all(context)
         playlistName = ""
@@ -484,7 +495,11 @@ private fun NocturneApp() {
                                 view = libraryView,
                                 onView = { libraryView = it },
                                 onSaveFilter = {
-                                    pendingPlaylistRule = libraryFilter
+                                    playlistGenre = if (libraryFilter.startsWith("GENRE:")) {
+                                        availableGenres.firstOrNull { it.equals(libraryFilter.removePrefix("GENRE:"), ignoreCase = true) }
+                                    } else null
+                                    playlistTempoRule = libraryFilter.takeIf { it.startsWith("TEMPO:") }
+                                    playlistFavouritesOnly = libraryFilter == "LIKED"
                                     playlistName = ""
                                     showSavePlaylistDialog = true
                                 }
@@ -570,33 +585,20 @@ private fun NocturneApp() {
                 )
             }
 
-            if (showSavePlaylistDialog) {
-                AlertDialog(
-                    onDismissRequest = { showSavePlaylistDialog = false },
-                    title = { Text("Save smart playlist") },
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("This playlist keeps its rule and updates when your library changes. Search text is not saved.", color = Muted, fontSize = 12.sp)
-                            OutlinedTextField(
-                                value = playlistName,
-                                onValueChange = { playlistName = it },
-                                singleLine = true,
-                                label = { Text("Playlist name") }
-                            )
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = ::createSmartPlaylist, enabled = playlistName.isNotBlank()) {
-                            Text("Save")
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showSavePlaylistDialog = false }) {
-                            Text("Cancel")
-                        }
-                    }
-                )
-            }
+            SmartPlaylistBuilderDialog(
+                visible = showSavePlaylistDialog,
+                name = playlistName,
+                onNameChange = { playlistName = it },
+                genres = availableGenres,
+                selectedGenre = playlistGenre,
+                onGenreChange = { playlistGenre = it },
+                selectedTempoRule = playlistTempoRule,
+                onTempoChange = { playlistTempoRule = it },
+                favouritesOnly = playlistFavouritesOnly,
+                onFavouritesOnlyChange = { playlistFavouritesOnly = it },
+                onDismiss = { showSavePlaylistDialog = false },
+                onSave = ::createSmartPlaylist
+            )
         }
     }
 }
