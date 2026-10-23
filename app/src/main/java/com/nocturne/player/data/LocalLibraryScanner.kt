@@ -1,0 +1,74 @@
+package com.nocturne.player.data
+
+import android.content.ContentUris
+import android.content.Context
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+
+/** Reads only the device's local media index; it does not upload audio or metadata. */
+object LocalLibraryScanner {
+    fun scan(context: Context): List<LocalTrack> {
+        val resolver = context.contentResolver
+        val collection: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        }
+        val projection = arrayOf(
+            MediaStore.Audio.Media._ID,
+            MediaStore.Audio.Media.TITLE,
+            MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.ALBUM,
+            MediaStore.Audio.Media.ALBUM_ID,
+            MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.YEAR,
+            MediaStore.Audio.Media.MIME_TYPE,
+            MediaStore.Audio.Media.IS_MUSIC
+        )
+        val result = mutableListOf<LocalTrack>()
+        val favoriteIds = FavoritesStore.all(context)
+        val cachedMetadata = MetadataStore.all(context)
+        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} > 0"
+        resolver.query(
+            collection,
+            projection,
+            selection,
+            null,
+            "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
+        )?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+            val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+            val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+            val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+            val albumIdCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+            val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+            val yearCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
+            val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idCol)
+                val albumId = cursor.getLong(albumIdCol)
+                val audioUri = ContentUris.withAppendedId(collection, id)
+                val artUri = if (albumId > 0L) {
+                    Uri.parse("content://media/external/audio/albumart/$albumId")
+                } else null
+                val year = if (cursor.isNull(yearCol)) null else cursor.getInt(yearCol).takeIf { it > 0 }
+                result += LocalTrack(
+                    id = id,
+                    title = cursor.getString(titleCol)?.takeIf { it.isNotBlank() } ?: "Unknown title",
+                    artist = cursor.getString(artistCol)?.takeIf { it.isNotBlank() && it != "<unknown>" } ?: "Unknown artist",
+                    album = cursor.getString(albumCol)?.takeIf { it.isNotBlank() && it != "<unknown>" } ?: "Unknown album",
+                    durationMs = cursor.getLong(durationCol),
+                    uri = audioUri,
+                    albumArtUri = artUri,
+                    year = year,
+                    mimeType = if (cursor.isNull(mimeCol)) null else cursor.getString(mimeCol),
+                    extra = cachedMetadata[id] ?: TrackExtraMetadata(),
+                    isFavorite = id in favoriteIds
+                )
+            }
+        }
+        return result
+    }
+}
