@@ -190,6 +190,7 @@ private fun NocturneApp() {
     var section by remember { mutableStateOf("MUSIC") }
     var libraryFilter by remember { mutableStateOf("ALL") }
     var libraryView by remember { mutableStateOf("SONGS") }
+    var playlistSort by remember { mutableStateOf("NAME") }
     var smartPlaylists by remember { mutableStateOf<List<SmartPlaylist>>(emptyList()) }
     var showSavePlaylistDialog by remember { mutableStateOf(false) }
     var playlistName by remember { mutableStateOf("") }
@@ -336,6 +337,14 @@ private fun NocturneApp() {
                     tracks = matchingTracks,
                     playlistId = playlist.id
                 )
+            }.let { playlists ->
+                when (playlistSort) {
+                    "MOST_TRACKS" -> playlists.sortedWith(
+                        compareByDescending<LibraryCollection> { it.trackCount }
+                            .thenBy { it.title.lowercase(Locale.ROOT) }
+                    )
+                    else -> playlists.sortedBy { it.title.lowercase(Locale.ROOT) }
+                }
             }
         else -> emptyList()
     }
@@ -504,6 +513,22 @@ private fun NocturneApp() {
                                     showSavePlaylistDialog = true
                                 }
                             )
+                        }
+                        if (libraryView == "PLAYLISTS") {
+                            item {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(
+                                        listOf("NAME" to "Name A–Z", "MOST_TRACKS" to "Most tracks"),
+                                        key = { it.first }
+                                    ) { (sort, label) ->
+                                        FilterChip(
+                                            selected = playlistSort == sort,
+                                            onClick = { playlistSort = sort },
+                                            label = { Text(label) }
+                                        )
+                                    }
+                                }
+                            }
                         }
                         if (scanning && tracks.isEmpty()) {
                             item { LoadingCard() }
